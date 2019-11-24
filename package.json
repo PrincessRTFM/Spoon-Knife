@@ -1,0 +1,9 @@
+{
+	"name": "spoon-knife",
+	"version": "1.0.0",
+	"description": "Experimentation and fiddling with npm",
+	"scripts": {
+		"test": "echo \"Error: no test specified\" && exit 1"
+	},
+	"private": true
+}
