@@ -1,23 +1,31 @@
 #!/usr/bin/env node
 
+const {
+	spawnSync,
+} = require('child_process');
+
 /* eslint-disable sonarjs/no-duplicate-string */
 const config = {
 	root: true,
 	env: {
 		es2017: true,
+		node: true,
+	},
+	parserOptions: {
+		ecmaVersion: 9,
 	},
 	rules: {
 		"prefer-spread": "error",
 		"max-len": [
 			"warn",
 			{
-				code: 160,
+				code: 125,
 				ignoreRegExpLiterals: false,
 				ignoreStrings: false,
 				ignoreUrls: false,
 				ignoreTemplateLiterals: false,
 				ignoreComments: false,
-				comments: 160,
+				comments: 125,
 			},
 		],
 		"no-empty": "error",
@@ -42,7 +50,7 @@ const config = {
 		"array-bracket-newline": [
 			"error",
 			{
-				minItems: 3,
+				minItems: 2,
 				multiline: true,
 			},
 		],
@@ -54,6 +62,7 @@ const config = {
 			"that",
 			"self",
 			"me",
+			"executionContext",
 		],
 		"implicit-arrow-linebreak": "error",
 		"space-infix-ops": [
@@ -151,7 +160,7 @@ const config = {
 			"error",
 			{
 				multiline: true,
-				minItems: 3,
+				minItems: 1,
 			},
 		],
 		"semi": "error",
@@ -245,7 +254,12 @@ const config = {
 		"no-iterator": "error",
 		"object-shorthand": "error",
 		"no-self-compare": "error",
-		"no-constant-condition": "error",
+		"no-constant-condition": [
+			"error",
+			{
+				checkLoops: false,
+			},
+		],
 		"no-undefined": "warn",
 		"no-with": "error",
 		"no-fallthrough": "error",
@@ -375,7 +389,6 @@ const config = {
 		"unicorn/no-keyword-prefix": "error",
 		"unicorn/no-new-buffer": "error",
 		"unicorn/no-process-exit": "warn",
-		"unicorn/no-unsafe-regex": "error",
 		"unicorn/no-zero-fractions": "warn",
 		"unicorn/number-literal-case": "warn",
 		"unicorn/prefer-add-event-listener": "error",
@@ -418,7 +431,6 @@ const config = {
 		"import/newline-after-import": "warn",
 		"import/no-unassigned-import": "error",
 		"import/no-anonymous-default-export": "warn",
-		"import/group-exports": "warn",
 		"sonarjs/no-element-overwrite": "error",
 		"sonarjs/no-extra-arguments": "error",
 		"sonarjs/no-identical-conditions": "error",
@@ -459,24 +471,20 @@ const config = {
 };
 config.overrides = [
 	{
-		files: [".eslintrc.js"],
-		env: {
-			node: true,
-		},
-	},
-	{
 		files: ["*.webpack.js"],
 		parserOptions: {
 			sourceType: "module",
 		},
 		env: {
-			browser: true,
+			commonjs: true,
+			node: false,
 		},
 	},
 	{
 		files: ["*.browser.js"],
 		env: {
 			browser: true,
+			node: false,
 		},
 	},
 	{
@@ -484,6 +492,7 @@ config.overrides = [
 		env: {
 			browser: true,
 			jquery: true,
+			node: false,
 		},
 	},
 	{
@@ -491,6 +500,7 @@ config.overrides = [
 		env: {
 			greasemonkey: true,
 			browser: true,
+			node: false,
 		},
 	},
 ];
@@ -502,6 +512,7 @@ config.overrides.forEach(override => {
 		config.rules.camelcase[1].allow.push("^GM_");
 	}
 });
+config.plugins = config.plugins || [];
 
 const rules = Object.keys(config.rules);
 const removedRules = [];
@@ -535,8 +546,33 @@ for (const rule of rules) {
 }
 
 if (!module.parent) {
-	console.log(`Plugins detected: [${config.plugins.length}] ${config.plugins.join(", ")}`);
-	console.log(`Plugins missing: [${Object.keys(removedPlugins).length}]`);
+	const requestedInstall = (process.argv[2] || '').match(/^-+(i(?:nstall)?|auto(?:-?fix)?|fix)$/iu);
+	const missingCount = Object.keys(removedPlugins).length;
+	if (missingCount && requestedInstall) {
+		console.info("Missing plugins detected, installing via npm...");
+		const subProcessArgs = [ 'install', '-D', 'eslint', ...Object.keys(removedPlugins) ];
+		const npm = spawnSync('npm', subProcessArgs, {
+			stdio: 'inherit',
+		});
+		if (npm.error) {
+			console.error(npm.error);
+		}
+		else if (npm.status) {
+			console.warn(`Subprocess npm exited with status ${npm.status}`);
+		}
+		else {
+			spawnSync(process.argv[0], [process.argv[1]], {
+				stdio: 'inherit',
+			});
+			process.exit();
+		}
+	}
+	console.log(`Plugins detected: [${config.plugins.length}]`);
+	for (const plugin of config.plugins) {
+		const fullName = `eslint-plugin-${plugin}`;
+		console.log(`- ${plugin} (${fullName}, ${require.resolve(fullName)})`);
+	}
+	console.log(`Plugins missing: [${missingCount}]`);
 	for (const plugin in removedPlugins) {
 		if (Reflect.apply(Object.prototype.hasOwnProperty, removedPlugins, [plugin])) {
 			const searched = removedPlugins[plugin];
@@ -549,10 +585,10 @@ if (!module.parent) {
 		}
 	}
 	console.log(`Rules removed: [${removedRules.length}]`);
-	if (removedRules.length) {
-		console.log(`- ${removedRules.join("\n- ")}`);
+	console.log(`Global rules defined: [${Object.keys(config.rules).length}]`);
+	if (missingCount) {
+		console.info("Pass -i or --install to automatically install missing plugins via npm");
 	}
-	console.log(`${Object.keys(config.rules).length} global rules defined`);
 }
 
 module.exports = config;
